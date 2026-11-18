@@ -7,6 +7,8 @@ It was built for the first event of [KUBO CyberSec](https://kubo.global/communit
 in The Gambia, where 18 people played 30 challenges for a day on one laptop and a home
 router. This repository is the kit without that event's content, so you can run your own.
 
+![The challenge board, with the KUBO theme and the 30-challenge pack](docs/board.png)
+
 **Take it as a start.** This is what worked for us on one day, shared so you do not begin
 from nothing. It is not a finished product, and you will want to change it for your room.
 See [Where it stands](#where-it-stands) for what has and has not been tried, and
@@ -28,6 +30,14 @@ One Docker Compose file starts all of it on one machine.
 | Guides | 8080 | Your tutorials, and a local copy of [CyberChef](https://github.com/gchq/CyberChef) at `/cyberchef/` |
 | Web target | 8081 | The web application your web challenges attack |
 | AI helper | 8083 | Optional. A tutor that gives hints, not flags, also as the `ai` command in every box |
+
+Every player logs in to their own Linux box, with the challenge files already inside:
+
+![A player's box](docs/box.png)
+
+The guides are served from the same machine:
+
+![The guides site of the 30-challenge pack](docs/guides.png)
 
 Around that:
 
