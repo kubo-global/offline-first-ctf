@@ -1,0 +1,13 @@
+offline-first-ctf
+Copyright 2026 KUBO, a project of Afrodidact
+
+Licensed under the Apache License, Version 2.0 (see LICENSE).
+
+Not covered by that licence: the KUBO name and logo, and the artwork in cards/
+(the swallows and the keycap). They belong to KUBO and Afrodidact. If you run your
+own event, use your own name and artwork.
+
+The theme in themes/kubo/ is based on the core theme of CTFd
+(https://github.com/CTFd/CTFd), Copyright CTFd LLC, licensed under the Apache
+License, Version 2.0. It includes Font Awesome Free and the Space Mono typeface,
+each under its own licence (SIL Open Font License 1.1 for the fonts).

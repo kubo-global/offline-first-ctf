@@ -1,0 +1,37 @@
+#!/bin/sh
+# A short map from kind of challenge to the tools already installed in this box.
+cat <<'HELP'
+
+  Which tool for which challenge
+  ------------------------------
+  Any file      file X            what is it, really?
+                strings X         readable text inside
+                xxd X | less      the raw bytes
+  Encodings     base64 -d         decode base64
+                tr 'A-Za-z' 'N-ZA-Mn-za-m'    ROT13
+                python3           for anything else (XOR, Caesar loops, ...)
+  Images        exiftool X        hidden metadata
+                zbarimg X         read a QR code
+                pngcheck -v X     check a PNG's structure
+                binwalk X         files hidden inside files
+                zsteg X           common hiding tricks in PNG
+                steghide extract -sf X
+                convert X -auto-level out.png   (then scp it to your laptop)
+  Documents     pdfinfo X, exiftool X
+  Archives      tar -xzf X, unzip X, 7z x X
+  Network       tshark -r X       read a capture
+                tshark -r X -Y http -T fields -e http.request.uri
+                curl URL          fetch a web page, see headers with -i
+  Audio         sox X -n spectrogram -o out.png   (then scp it to your laptop)
+                multimon-ng       decoders for tones and Morse
+  Programs      ./X               run it (chmod +x X first)
+                ltrace ./X        library calls, often the password check
+                strace ./X        system calls
+                gdb ./X           step through it
+                objdump -d X      read the machine code
+
+  Every tool has a manual:  man <tool>   (q to quit)
+  Stuck? Each challenge has hints on the game site, and the tutorials explain the basics.
+  Or ask the AI helper:  ai "what is this?" < FILE    (ai --help for more)
+
+HELP

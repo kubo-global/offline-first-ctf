@@ -1,0 +1,116 @@
+#!/usr/bin/env python3
+"""ai: ask the CTF's AI helper from your box.
+
+  ai "what does base64 look like?"
+  ai "what kind of file is this?" < challenges/x/mystery.bin
+  strings program | head -50 | ai "what is this program checking?"
+  ai -c "and how do I run it?"      carry on the last conversation
+  ai --left                         questions left this hour
+
+It is a tutor: it explains and gives hints, not flags. Your questions go to an
+AI service on the internet, so never paste passwords or personal details.
+"""
+import json, os, sys, urllib.error, urllib.request
+
+HOME = os.path.expanduser("~")
+TOKEN_FILE = os.path.join(HOME, ".ctf", "ai-token")
+HISTORY = os.path.join(HOME, ".ctf", "ai-history.json")
+MAX_INPUT = 12000
+
+
+def server():
+    try:
+        with open("/etc/ctf/server") as fh:
+            return fh.read().strip()
+    except OSError:
+        return "10.0.0.1"
+
+
+TTY = sys.stderr.isatty()
+
+
+def status(text):
+    # a short "thinking..." on the terminal while waiting, wiped again after
+    if TTY:
+        print(text.ljust(12), end="\r", file=sys.stderr, flush=True)
+
+
+def call(path, token, body=None):
+    url = f"http://{server()}:8083{path}"
+    req = urllib.request.Request(url, data=json.dumps(body).encode() if body is not None else None,
+                                 headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+                                 method="POST" if body is not None else "GET")
+    try:
+        with urllib.request.urlopen(req, timeout=150) as r:
+            return json.load(r)
+    except urllib.error.HTTPError as e:
+        status("")
+        try:
+            msg = json.load(e)["error"]["message"]
+        except Exception:
+            msg = f"error {e.code}"
+        sys.exit(f"ai: {msg}")
+    except OSError as e:
+        status("")
+        sys.exit(f"ai: cannot reach the AI helper ({e}). Is it running? Ask an organiser.")
+
+
+def main():
+    args = sys.argv[1:]
+    if not args and sys.stdin.isatty() or args[:1] in (["-h"], ["--help"]):
+        print(__doc__.strip()); return
+    try:
+        with open(TOKEN_FILE) as fh:
+            token = fh.read().strip()
+    except OSError:
+        sys.exit("ai: this box has no AI key. Ask an organiser.")
+    if args == ["--left"]:
+        j = call("/api/me", token)
+        print(f"{j['left_this_hour']} of {j['per_hour']} questions left this hour"); return
+
+    cont = args[:1] == ["-c"]
+    if cont:
+        args = args[1:]
+    question = " ".join(args).strip()
+    if not sys.stdin.isatty():
+        raw = sys.stdin.buffer.read(MAX_INPUT + 1)
+        text = raw.decode("utf-8", "replace")
+        if raw and (b"\x00" in raw[:4096] or text.count("�") > len(text) // 20):
+            sys.exit("ai: that input is binary. Send text instead, for example:\n"
+                     "    strings FILE | head -100 | ai \"...\"     or     xxd FILE | head -40 | ai \"...\"")
+        if len(raw) > MAX_INPUT:
+            text = text[:MAX_INPUT] + "\n[cut: only the first part was sent]"
+            print(f"ai: input was long, sent the first {MAX_INPUT} characters", file=sys.stderr)
+        if text.strip():
+            question = (question + "\n\n" if question else "") + "```\n" + text.rstrip() + "\n```"
+    if not question:
+        sys.exit("ai: ask a question, like:  ai \"what is a flag?\"")
+
+    messages = []
+    if cont:
+        try:
+            with open(HISTORY) as fh:
+                messages = json.load(fh)
+        except (OSError, ValueError):
+            pass
+    messages.append({"role": "user", "content": question})
+    status("thinking...")
+    j = call("/v1/chat/completions", token, {"messages": messages[-16:]})
+    status("")
+    answer = j["choices"][0]["message"]["content"]
+    print(answer)
+    messages.append({"role": "assistant", "content": answer})
+    try:
+        os.makedirs(os.path.dirname(HISTORY), exist_ok=True)
+        with open(HISTORY, "w") as fh:
+            json.dump(messages[-16:], fh)
+    except OSError:
+        pass
+    k = j.get("quota") or {}
+    if "left_this_hour" in k:
+        n = k["left_this_hour"]
+        print(f"\n[{n} question{'' if n == 1 else 's'} left this hour. Carry on with: ai -c \"...\"]", file=sys.stderr)
+
+
+if __name__ == "__main__":
+    main()

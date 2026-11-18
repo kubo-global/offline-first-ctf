@@ -1,0 +1,20 @@
+# CTF player box. Password login for the one player of this box, nothing else.
+PasswordAuthentication yes
+KbdInteractiveAuthentication no
+PermitRootLogin no
+PermitEmptyPasswords no
+# no tunnels or forwarding: the box is a place to work, not a way into the network
+AllowTcpForwarding no
+AllowStreamLocalForwarding no
+AllowAgentForwarding no
+GatewayPorts no
+PermitTunnel no
+X11Forwarding no
+# scp and sftp, so players can copy files to their own laptop
+Subsystem sftp internal-sftp
+ClientAliveInterval 60
+ClientAliveCountMax 5
+MaxSessions 10
+# the login system (pam_motd) already shows /etc/motd once
+PrintMotd no
+Banner none

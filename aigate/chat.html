@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI helper, __EVENT__</title>
+<style>
+:root{--bg:#18151e;--panel:#211d28;--line:#363040;--line2:#453e50;--text:#ebe4e0;--soft:#a39d9a;--faint:#6a6570;--gold:#f1ba37;--bad:#ff7a7a}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{background:var(--bg);color:var(--text);font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:14.5px;line-height:1.6;display:flex;flex-direction:column}
+.top{display:flex;align-items:center;gap:12px;padding:14px 20px;border-bottom:1px solid var(--line)}
+.top .k{font-weight:700;letter-spacing:.1em;text-transform:uppercase}
+.top .c{color:var(--soft)}
+.top .me{margin-left:auto;color:var(--soft);font-size:12.5px;text-align:right}
+.top button{margin-left:10px}
+main{flex:1;overflow-y:auto}
+.wrap{max-width:760px;margin:0 auto;padding:24px 20px}
+.note{color:var(--soft);font-size:13px;border-left:2px solid var(--gold);padding:2px 0 2px 12px;margin:0 0 20px}
+.msg{margin:0 0 18px}
+.msg .who{font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--faint);margin-bottom:4px}
+.msg.user .who{color:var(--gold)}
+.msg .body{white-space:normal;overflow-wrap:anywhere}
+.msg.user .body{white-space:pre-wrap}
+.msg.err .body{color:var(--bad)}
+.body p{margin:0 0 10px}
+pre{background:var(--panel);border:1px solid var(--line);padding:10px 12px;overflow-x:auto;margin:6px 0 12px;white-space:pre}
+code{background:var(--panel);padding:1px 5px}
+pre code{background:none;padding:0}
+form.ask{border-top:1px solid var(--line);padding:12px 20px 16px}
+form.ask .row{max-width:760px;margin:0 auto;display:flex;gap:10px;align-items:flex-end}
+textarea,input{flex:1;background:var(--panel);color:var(--text);border:1px solid var(--line2);font:inherit;padding:10px 12px;min-width:0}
+textarea{resize:vertical;min-height:46px;max-height:40vh}
+textarea:focus,input:focus{outline:none;border-color:var(--gold)}
+button{background:var(--gold);color:#18151e;border:0;font:inherit;font-weight:700;padding:10px 16px;cursor:pointer;text-transform:uppercase;letter-spacing:.06em;font-size:12.5px}
+button.ghost{background:none;color:var(--soft);border:1px solid var(--line2);padding:6px 10px}
+button:disabled{opacity:.5;cursor:wait}
+.hint{max-width:760px;margin:6px auto 0;color:var(--faint);font-size:12px}
+.login{max-width:420px;margin:8vh auto;padding:0 20px}
+.login h1{font-size:22px;text-transform:uppercase;margin:0 0 6px}
+.login p{color:var(--soft);margin:0 0 18px}
+.login label{display:block;font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--soft);margin:12px 0 4px}
+.login input{width:100%}
+.login button{margin-top:18px;width:100%}
+.login .err{color:var(--bad);min-height:1.6em;margin-top:10px}
+.hide{display:none!important}
+.dots::after{content:"";animation:d 1.2s steps(4) infinite}
+@keyframes d{0%{content:""}25%{content:"."}50%{content:".."}75%{content:"..."}}
+@media (max-width:520px){.top{flex-wrap:wrap;padding:10px 16px;gap:4px 12px}.top .c{display:none}.top button{margin-left:auto}.top .me{order:3;margin-left:0;width:100%;text-align:left;font-size:12px}.wrap,form.ask{padding-left:16px;padding-right:16px}}
+</style>
+</head>
+<body>
+<div class="top"><span class="k">__EVENT__</span><span class="c">AI helper</span>
+  <span class="me" id="me"></span><button type="button" class="ghost hide" id="out">Log out</button></div>
+
+<section class="login" id="login">
+  <h1>AI helper</h1>
+  <p>Stuck? Ask it to explain an idea, a tool or an error. It gives hints, not flags.</p>
+  <form id="lf">
+    <label for="l">Login (from your card)</label><input id="l" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="player07">
+    <label for="p">Password</label><input id="p" type="password" autocomplete="current-password">
+    <button type="submit" id="lb">Log in</button>
+    <div class="err" id="le"></div>
+  </form>
+</section>
+
+<main id="chat" class="hide"><div class="wrap" id="log">
+  <p class="note">Your questions go to an AI service on the internet. Do not type personal details or passwords.
+  The helper can be wrong: check what it says. Only ask about the CTF challenges. In your box, the same helper is the <code>ai</code> command.</p>
+</div></main>
+
+<form class="ask hide" id="af">
+  <div class="row"><textarea id="q" rows="2" placeholder="Ask about a challenge, a tool or an error..."></textarea>
+  <button type="submit" id="ab">Ask</button></div>
+  <div class="hint">Enter sends, Shift+Enter for a new line. <button type="button" class="ghost" id="clear">New conversation</button></div>
+</form>
+
+<script>
+(function(){
+  var $ = function(id){ return document.getElementById(id); };
+  var KEY = "ctf-ai";
+  var state = { token:null, login:null, level:null, messages:[] };
+  function save(){ try{ sessionStorage.setItem(KEY, JSON.stringify(state)); }catch(e){} }
+  function load(){ try{ var s = JSON.parse(sessionStorage.getItem(KEY) || "null"); if(s && s.token) state = s; }catch(e){} }
+
+  function esc(s){ return s.replace(/[&<>"']/g, function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]; }); }
+  // small, safe markdown: code blocks, inline code, bold, paragraphs. Everything is escaped first.
+  function md(text){
+    var parts = text.split(/```/), out = "";
+    for (var i = 0; i < parts.length; i++){
+      if (i % 2){ out += "<pre><code>" + esc(parts[i].replace(/^[\w+-]*\n/, "")) + "</code></pre>"; continue; }
+      out += parts[i].split(/\n{2,}/).map(function(p){
+        p = p.trim(); if (!p) return "";
+        p = esc(p).replace(/`([^`\n]+)`/g, "<code>$1</code>").replace(/\*\*([^*\n]+)\*\*/g, "<b>$1</b>").replace(/\n/g, "<br>");
+        return "<p>" + p + "</p>";
+      }).join("");
+    }
+    return out;
+  }
+  function add(role, text){
+    var d = document.createElement("div"); d.className = "msg " + role;
+    var w = document.createElement("div"); w.className = "who"; w.textContent = role === "user" ? (state.login || "you") : (role === "err" ? "note" : "helper");
+    var b = document.createElement("div"); b.className = "body";
+    if (role === "assistant") b.innerHTML = md(text); else b.textContent = text;
+    d.appendChild(w); d.appendChild(b); $("log").appendChild(d);
+    $("chat").scrollTop = $("chat").scrollHeight; return b;
+  }
+  function meLine(k){
+    $("me").textContent = state.login + (state.level ? ", " + state.level : "") +
+      (k ? "  |  " + k.left_this_hour + " of " + k.per_hour + " questions left this hour" : "");
+  }
+  function show(){
+    var on = !!state.token;
+    $("login").classList.toggle("hide", on); $("chat").classList.toggle("hide", !on); $("af").classList.toggle("hide", !on); $("out").classList.toggle("hide", !on);
+    if (on){
+      meLine(null);
+      state.messages.forEach(function(m){ add(m.role, m.content); });
+      fetch("/api/me", { headers:{ Authorization:"Bearer " + state.token } }).then(function(r){ return r.json(); })
+        .then(function(j){ if (j.error){ logout(); return; } meLine(j); if (!j.on) add("err", "The AI helper is switched off right now."); })
+        .catch(function(){});
+      $("q").focus();
+    } else $("l").focus();
+  }
+  function logout(){ state = { token:null, login:null, level:null, messages:[] }; save(); location.reload(); }
+
+  $("lf").addEventListener("submit", function(e){
+    e.preventDefault(); $("le").textContent = ""; $("lb").disabled = true;
+    fetch("/api/login", { method:"POST", headers:{ "Content-Type":"application/json" },
+      body: JSON.stringify({ login:$("l").value.trim().toLowerCase(), password:$("p").value }) })
+      .then(function(r){ return r.json(); })
+      .then(function(j){
+        $("lb").disabled = false;
+        if (j.error){ $("le").textContent = j.error.message; return; }
+        state = { token:j.token, login:j.login, level:j.level, messages:[] }; save(); show();
+      })
+      .catch(function(){ $("lb").disabled = false; $("le").textContent = "Cannot reach the server. Are you on the CTF Wi-Fi?"; });
+  });
+
+  $("af").addEventListener("submit", function(e){
+    e.preventDefault();
+    var q = $("q").value.trim(); if (!q || $("ab").disabled) return;
+    $("q").value = ""; add("user", q);
+    state.messages.push({ role:"user", content:q }); save();
+    var wait = add("assistant", ""); wait.innerHTML = '<span class="dots">thinking</span>';
+    $("ab").disabled = true;
+    fetch("/api/chat", { method:"POST", headers:{ "Content-Type":"application/json", Authorization:"Bearer " + state.token },
+      body: JSON.stringify({ messages: state.messages }) })
+      .then(function(r){ return r.json(); })
+      .then(function(j){
+        $("ab").disabled = false; wait.parentNode.remove();
+        if (j.error){ state.messages.pop(); save(); add("err", j.error.message); return; }
+        var a = j.choices[0].message.content; state.messages.push({ role:"assistant", content:a }); save();
+        add("assistant", a); if (j.quota) meLine(j.quota);
+      })
+      .catch(function(){ $("ab").disabled = false; wait.parentNode.remove(); state.messages.pop(); save();
+        add("err", "No answer from the server. Try again."); });
+  });
+  $("q").addEventListener("keydown", function(e){ if (e.key === "Enter" && !e.shiftKey){ e.preventDefault(); $("af").requestSubmit(); } });
+  $("clear").addEventListener("click", function(){ state.messages = []; save(); location.reload(); });
+  $("out").addEventListener("click", logout);
+
+  load(); show();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,11 @@
+# settings and passwords of one event
+.env
+# player logins and passwords, generated per event by players.py
+players/
+docker-compose.players.yml
+# fetched and built by package-offline.sh
+cyberchef/
+images.tar
+# CTFd's database, uploads and logs
+data/
+__pycache__/

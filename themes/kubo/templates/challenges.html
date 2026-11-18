@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+
+{% block content %}
+  <div class="jumbotron kubo-hero">
+    <svg class="kubo-motif" viewBox="0 0 440 200" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
+      <path d="M0 150 C 70 118, 120 172, 185 142 S 320 116, 440 150" fill="none" stroke="#817b79" stroke-width="2"/>
+      <path d="M300 46 q 9 -9 18 0 q 9 -9 18 0" fill="none" stroke="#817b79" stroke-width="2.6"/>
+      <path d="M334 32 q 8 -8 16 0 q 8 -8 16 0" fill="none" stroke="#817b79" stroke-width="2.6"/>
+      <path d="M360 58 q 7 -7 14 0 q 7 -7 14 0" fill="none" stroke="#817b79" stroke-width="2.6"/>
+      <path d="M392 40 q 7 -7 14 0 q 7 -7 14 0" fill="none" stroke="#817b79" stroke-width="2.6"/>
+    </svg>
+    <div class="container">
+      <div class="kubo-frame">
+        <div class="kubo-lbl t"><span>&gt; ./capture --all</span><span>{{ Configs.ctf_name }}</span></div>
+        <div class="kubo-kicker">{{ Configs.ctf_description }}</div>
+        <h1>Capture the <span class="y">Flag</span></h1>
+        <p class="kubo-sub">Work the board and capture the flags. Stuck on one? Open a hint. Start with the easy ones and climb as far as you can.</p>
+        <div class="kubo-lbl b"><span>as we find the flags our score climbs</span><span>[ OK ]</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="container">
+    <div class="row">
+      <div class="col-md-12">
+        {% include "components/errors.html" %}
+      </div>
+    </div>
+
+    <div 
+      x-data="ChallengeBoard" 
+      @load-challenges.window="loadChallenges()" 
+      @load-challenge.window="loadChallenge($event.detail)"
+    >
+      <div
+          x-ref="challengeWindow" id="challenge-window" class="modal fade" tabindex="-1" role="dialog" x-data=""
+          x-html="$store.challenge.data.view"
+      ></div>
+
+      <div x-show="!loaded">
+        <div class="min-vh-50 d-flex align-items-center">
+          <div class="text-center w-100">
+            <i class="fas fa-circle-notch fa-spin fa-3x fa-fw spinner"></i>
+          </div>
+        </div>
+      </div>
+
+      <div x-show="loaded">
+        <template x-for="(category, idx) in getCategories()" :key="idx">
+          <div class="pt-5">
+            <div class="category-header mb-3">
+              <h3 x-text="category"></h3>
+            </div>
+
+            <div class="category-challenges d-flex flex-column">
+              <div class="challenges-row row">
+                <template x-for="(c, idx) in getChallenges(category)" :key="c.id">
+                  <div class="col-sm-6 col-md-4 col-lg-3 my-3">
+                    <button
+                        class="challenge-button btn btn-dark w-100 h-100"
+                        :class="[
+                          c.solved_by_me ? 'challenge-solved' : '',
+                          ...c.tags.map((tag) => `tag-${tag.value.replace(/ /g, '-')}`),
+                        ];"
+                        :value="c.id" @click="loadChallenge(c.id)"
+                    >
+
+                      <div class="challenge-inner my-3">
+                        <p x-text="c.name"></p>
+                        <span x-text="c.value"></span>
+                      </div>
+                    </button>
+                  </div>
+                </template>
+              </div>
+            </div>
+          </div>
+        </template>
+      </div>
+    </div>
+  </div>
+{% endblock %}
+
+{% block scripts %}
+  {{ Assets.js("assets/js/challenges.js") }}
+{% endblock %}

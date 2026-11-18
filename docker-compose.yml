@@ -1,0 +1,194 @@
+# Offline-first CTF: everything for a Capture the Flag day on one machine.
+# No internet needed once the images are on it (see package-offline.sh).
+# The challenges come from a pack: PACK in .env (default: ./example-pack).
+#
+# Networks are split on purpose (safety):
+#   ctfd_internal  - CTFd + database + cache. internal: true, so these containers
+#                    cannot reach the internet or the rest of the network.
+#   players        - what players' browsers reach: CTFd, the tutorials, the
+#                    vulnerable web app, the SSH router, the browser terminal.
+#                    The web app sits ONLY here and holds no real data, so the
+#                    worst a player can do is read a flag.
+#   boxes          - the player boxes, the SSH router and the boxes' proxy.
+#                    internal: true, so a box has no route anywhere, not even when
+#                    the server has internet for the AI helper. Web tools in a box go
+#                    through boxproxy, which reaches only the room's own services.
+#                    No database, no secrets here.
+#
+# Reachable from the room:
+#   CTFd              http://<server>:8000
+#   Tutorials         http://<server>:8080   (CyberChef at /cyberchef/)
+#   Web app           http://<server>:8081   (the pack's web challenges)
+#   Browser terminal  http://<server>:8082
+#   AI helper         http://<server>:8083   (needs internet on the server, see RUNBOOK)
+#   Player boxes      ssh -p 2222 <login>@<server>
+#
+# The player boxes themselves are in docker-compose.players.yml, made by players.py.
+# .env sets COMPOSE_FILE so both files are always used together.
+
+name: offline-first-ctf
+
+services:
+  ctfd:
+    image: ctfd/ctfd:3.8.9
+    restart: always
+    ports:
+      - "${BIND_ADDR:-0.0.0.0}:8000:8000"
+    environment:
+      - UPLOAD_FOLDER=/var/uploads
+      # signs the session cookies; needed once CTFd runs more than one worker
+      - SECRET_KEY=${CTFD_SECRET_KEY:?set CTFD_SECRET_KEY in .env}
+      - DATABASE_URL=mysql+pymysql://ctfd:${MYSQL_PASSWORD}@db/ctfd
+      - REDIS_URL=redis://cache:6379
+      - WORKERS=2
+      - LOG_FOLDER=/var/log/CTFd
+      - ACCESS_LOG=-
+      - ERROR_LOG=-
+      - REVERSE_PROXY=false
+    volumes:
+      - ./data/ctfd/logs:/var/log/CTFd
+      - ./data/ctfd/uploads:/var/uploads
+      - ./themes/kubo:/opt/CTFd/CTFd/themes/kubo:ro
+    depends_on:
+      - db
+      - cache
+    networks:
+      - players
+      - ctfd_internal
+
+  db:
+    image: mariadb:10.11
+    restart: always
+    environment:
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
+      - MYSQL_USER=ctfd
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      - MYSQL_DATABASE=ctfd
+    volumes:
+      - ./data/mysql:/var/lib/mysql
+    networks:
+      - ctfd_internal
+    # no ports: the database is never exposed outside the internal network
+    command: [mysqld, --character-set-server=utf8mb4, --collation-server=utf8mb4_unicode_ci, --wait_timeout=28800, --log-warnings=0]
+
+  cache:
+    image: redis:7-alpine
+    restart: always
+    volumes:
+      - ./data/redis:/data
+    networks:
+      - ctfd_internal
+
+  tutorials:
+    image: nginx:1.27-alpine
+    restart: always
+    ports:
+      - "${BIND_ADDR:-0.0.0.0}:8080:80"
+    volumes:
+      - ${PACK:-./example-pack}/tutorials:/usr/share/nginx/html:ro
+      # offline copy of CyberChef, fetched by package-offline.sh
+      - ./cyberchef:/usr/share/nginx/cyberchef:ro
+      - ./nginx/guides.conf:/etc/nginx/conf.d/default.conf:ro
+    networks:
+      - players
+
+  webchallenge:
+    build: ${PACK:-./example-pack}/web-challenge
+    image: offline-first-ctf-webchallenge:latest
+    restart: always
+    ports:
+      - "${BIND_ADDR:-0.0.0.0}:8081:8081"
+    networks:
+      - players
+    # deliberately vulnerable, so it is boxed in: only on the players network,
+    # no database, no secrets, nothing to reach. Reset with: docker compose restart webchallenge
+
+  # The SSH router: one address for everyone, each login goes to that player's box.
+  # The password is checked by the box itself, sshpiper only passes it on.
+  sshpiper:
+    image: farmer1992/sshpiperd:full-v1.6.1
+    restart: always
+    command: ["/sshpiperd/plugins/yaml", "--config", "/etc/sshpiper/pipes.yaml", "--no-check-perm"]
+    ports:
+      - "${BIND_ADDR:-0.0.0.0}:2222:2222"
+    volumes:
+      - ./players/sshpiper:/etc/sshpiper:ro
+      # its own host key, kept, so players do not see a changed-key warning after a restart
+      - sshpiper-hostkey:/etc/ssh
+    networks:
+      - players
+      - boxes
+
+  # The browser terminal, for laptops without ssh: asks the login, then SSH to the box.
+  webterm:
+    build: ./webterm
+    image: offline-first-ctf-webterm:latest
+    restart: always
+    ports:
+      - "${BIND_ADDR:-0.0.0.0}:8082:7681"
+    depends_on:
+      - sshpiper
+    networks:
+      - players
+
+  # The AI helper: the only container that talks to the internet, and only to the model
+  # provider. The key stays here. Without AI_API_KEY it runs and says it is switched off.
+  aigate:
+    build: ./aigate
+    image: offline-first-ctf-aigate:latest
+    restart: always
+    ports:
+      - "${BIND_ADDR:-0.0.0.0}:8083:8083"
+    environment:
+      - AI_API_KEY=${AI_API_KEY:-}
+      - AI_BASE_URL=${AI_BASE_URL:-https://api.together.xyz/v1}
+      - AI_MODEL=${AI_MODEL:-openai/gpt-oss-120b}
+      - AI_PER_HOUR=${AI_PER_HOUR:-40}
+      - AI_MAX_TOKENS=${AI_MAX_TOKENS:-1500}
+      - AI_BUDGET_TOKENS=${AI_BUDGET_TOKENS:-5000000}
+      - AI_MODE=${AI_MODE:-tutor}
+      - AI_AUDIENCE=${AI_AUDIENCE:-}
+      - EVENT_NAME=${EVENT_NAME:-Capture the Flag}
+      - FLAG_PREFIX=${FLAG_PREFIX:-FLAG}
+    volumes:
+      - ./players/aigate:/etc/aigate:ro
+      - aigate-data:/data
+    networks:
+      - players
+
+  # The boxes' only way out: an HTTP proxy to the game, tutorials, web app and AI helper.
+  boxproxy:
+    image: offline-first-ctf-aigate:latest
+    restart: always
+    command: ["python", "-u", "boxproxy.py"]
+    environment:
+      - SERVER_ADDR=${SERVER_ADDR:-10.0.0.1}
+    depends_on:
+      - aigate
+    networks:
+      - players
+      - boxes
+
+  # Builds the player box image only; the boxes themselves run from docker-compose.players.yml.
+  playerbox:
+    build:
+      context: ./playerbox
+      # the pack's files go into every box; only this folder of the pack enters the build
+      additional_contexts:
+        pack: ${PACK:-./example-pack}/files
+    image: offline-first-ctf-playerbox:latest
+    profiles: ["build"]
+
+volumes:
+  sshpiper-hostkey:
+  aigate-data:
+
+networks:
+  players:
+    driver: bridge
+  boxes:
+    driver: bridge
+    internal: true
+  ctfd_internal:
+    driver: bridge
+    internal: true
